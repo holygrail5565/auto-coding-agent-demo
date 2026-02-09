@@ -1,5 +1,41 @@
 # Progress Log
 
+## 2026-02-10 - Task 17: 生成 API - 视频生成
+
+### What was done:
+- 重写 lib/ai/volc-video.ts 火山引擎视频生成 API 封装
+  - 使用 Bearer Token 认证
+  - 端点: https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks
+  - 模型: doubao-seedance-1-5-pro-251215
+  - 环境变量: VOLC_API_KEY
+  - createVideoTask() - 创建图生视频任务
+  - getVideoTaskStatus() - 查询任务状态
+  - waitForVideoTask() - 等待任务完成
+  - downloadVideo() - 下载视频
+- 创建 app/api/generate/video/scene/[sceneId]/route.ts
+  - POST /api/generate/video/scene/:sceneId 为单个分镜创建视频任务
+- 创建 app/api/generate/video/task/[taskId]/route.ts
+  - GET /api/generate/video/task/:taskId 查询视频任务状态
+  - 完成后自动下载视频并上传到 Storage
+- 创建 app/api/generate/videos/route.ts
+  - POST /api/generate/videos 批量创建所有分镜视频任务
+  - 更新项目 stage 为 'videos'
+
+### Testing:
+- 运行 npm run lint 通过
+- 运行 npm run build 构建成功
+- ✅ 视频任务创建成功 (taskId: cgt-20260210033745-9ckcv)
+- ✅ 状态查询成功 (status: completed, videoUrl: 返回视频URL)
+
+### Notes:
+- 视频生成使用异步任务模式：创建任务 → 轮询查询状态
+- 状态值：pending/running/succeeded/failed
+- 视频默认时长 5 秒，分辨率 720p
+- 视频生成需要几分钟时间
+- 需要先有图片才能生成视频
+
+---
+
 ## 2026-02-10 - Task 16: 生成 API - 图片生成
 
 ### What was done:

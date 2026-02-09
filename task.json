@@ -248,7 +248,7 @@
         "POST /api/generate/videos 批量创建所有分镜视频任务",
         "更新项目 stage 为 'videos'"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": 18,

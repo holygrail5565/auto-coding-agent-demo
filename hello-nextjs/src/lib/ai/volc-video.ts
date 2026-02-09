@@ -1,23 +1,18 @@
 /**
  * Volcano Engine Video Generation API wrapper.
- * Handles video generation using Seedance model (image-to-video).
+ * Handles video generation using Doubao Seedance model (image-to-video).
+ * API: https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks
  */
 
-import type {
-  VolcVideoTaskResponse,
-  VolcVideoTaskStatusResponse,
-} from "@/types/ai";
-
 // Configuration
-const VOLC_ACCESS_KEY = process.env.VOLC_ACCESS_KEY;
-const VOLC_SECRET_KEY = process.env.VOLC_SECRET_KEY;
-const VOLC_VIDEO_BASE_URL = process.env.VOLC_VIDEO_BASE_URL || "https://cv.volcengineapi.com";
-const VOLC_REGION = process.env.VOLC_REGION || "cn-north-1";
+const VOLC_API_KEY = process.env.VOLC_API_KEY;
+const VOLC_VIDEO_TASKS_URL = process.env.VOLC_VIDEO_TASKS_URL || "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks";
+const DEFAULT_MODEL = "doubao-seedance-1-5-pro-251215";
 
 // Retry configuration
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
-const REQUEST_TIMEOUT_MS = 60000; // 1 minute for API calls (video generation is async)
+const REQUEST_TIMEOUT_MS = 60000; // 1 minute for API calls
 
 /**
  * Custom error class for Volcano Engine Video API errors
@@ -26,7 +21,7 @@ export class VolcVideoApiError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
-    public errorCode?: number
+    public errorCode?: string
   ) {
     super(message);
     this.name = "VolcVideoApiError";
@@ -49,96 +44,7 @@ function sleep(ms: number): Promise<void> {
  * Check if the API credentials are configured
  */
 export function isVolcVideoConfigured(): boolean {
-  return !!(VOLC_ACCESS_KEY && VOLC_SECRET_KEY);
-}
-
-/**
- * Generate HMAC-SHA256 signature for Volcano Engine API
- */
-async function generateSignature(
-  secretKey: string,
-  message: string
-): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secretKey);
-  const messageData = encoder.encode(message);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-  return btoa(String.fromCharCode(...new Uint8Array(signature)));
-}
-
-/**
- * Hash a string using SHA-256
- */
-async function hashSHA256(message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * Get host from base URL
- */
-function getHost(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  return url.host;
-}
-
-/**
- * Build authorization header for Volcano Engine API
- */
-async function buildAuthHeaders(
-  method: string,
-  path: string,
-  body: string,
-  baseUrl: string = VOLC_VIDEO_BASE_URL
-): Promise<Record<string, string>> {
-  if (!VOLC_ACCESS_KEY || !VOLC_SECRET_KEY) {
-    throw new VolcVideoApiError("Volcano Engine credentials not configured");
-  }
-
-  const host = getHost(baseUrl);
-  const now = new Date();
-  const dateStr = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  const shortDate = dateStr.slice(0, 8);
-
-  // Build canonical request
-  const hashedPayload = await hashSHA256(body);
-  const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-content-sha256:${hashedPayload}\nx-date:${dateStr}\n`;
-  const signedHeaders = "content-type;host;x-content-sha256;x-date";
-
-  const canonicalRequest = `${method}\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${hashedPayload}`;
-
-  // Build string to sign
-  const credentialScope = `${shortDate}/${VOLC_REGION}/cv/visual/request`;
-  const hashedCanonicalRequest = await hashSHA256(canonicalRequest);
-  const stringToSign = `HMAC-SHA256\n${dateStr}\n${credentialScope}\n${hashedCanonicalRequest}`;
-
-  // Calculate signature
-  const kDate = await generateSignature(VOLC_SECRET_KEY, shortDate);
-  const kRegion = await generateSignature(kDate, VOLC_REGION);
-  const kService = await generateSignature(kRegion, "cv");
-  const kSigning = await generateSignature(kService, "request");
-  const signature = await generateSignature(kSigning, stringToSign);
-
-  const authorization = `HMAC-SHA256 Credential=${VOLC_ACCESS_KEY}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-  return {
-    "Content-Type": "application/json",
-    "X-Date": dateStr,
-    "X-Content-Sha256": hashedPayload,
-    Authorization: authorization,
-  };
+  return !!VOLC_API_KEY;
 }
 
 /**
@@ -161,6 +67,39 @@ export interface VideoStatusResult {
 }
 
 /**
+ * Create task response
+ */
+interface CreateTaskResponse {
+  id: string;
+  status?: string;
+  error?: {
+    message: string;
+    type: string;
+    code: string;
+  };
+}
+
+/**
+ * Get task status response
+ */
+interface GetTaskResponse {
+  id: string;
+  status: string;
+  content?: {
+    video_url?: string;
+  };
+  output?: {
+    url?: string;
+    duration?: number;
+  };
+  error?: {
+    message: string;
+    type: string;
+    code: string;
+  };
+}
+
+/**
  * Create a video generation task from an image
  * @param imageUrl - URL of the source image
  * @param prompt - Description of the desired video motion
@@ -171,27 +110,34 @@ export async function createVideoTask(
   imageUrl: string,
   prompt?: string,
   options: {
-    negativePrompt?: string;
     duration?: number;
-    seed?: number;
+    watermark?: boolean;
   } = {}
 ): Promise<VideoTaskResult> {
   if (!isVolcVideoConfigured()) {
-    throw new VolcVideoApiError("Volcano Engine video generation is not configured");
+    throw new VolcVideoApiError("Volcano Engine video generation is not configured. Please set VOLC_API_KEY.");
   }
 
-  // Build request body for Seedance model (image-to-video)
-  const requestBody = {
-    req_key: "i2v_high_aes_general", // Image-to-video model key
-    image_url: imageUrl,
-    prompt: prompt ?? "",
-    negative_prompt: options.negativePrompt ?? "low quality, blurry, distorted, bad motion, static",
-    duration: options.duration ?? 5, // Default 5 seconds
-    ...(options.seed !== undefined && { seed: options.seed }),
-  };
+  // Build prompt with parameters
+  const duration = options.duration ?? 5;
+  const watermark = options.watermark ?? false;
+  const fullPrompt = `${prompt ?? ""} --duration ${duration} --camerafixed false --watermark ${watermark}`;
 
-  const body = JSON.stringify(requestBody);
-  const path = "/";
+  const requestBody = {
+    model: DEFAULT_MODEL,
+    content: [
+      {
+        type: "text",
+        text: fullPrompt,
+      },
+      {
+        type: "image_url",
+        image_url: {
+          url: imageUrl,
+        },
+      },
+    ],
+  };
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -200,39 +146,48 @@ export async function createVideoTask(
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const headers = await buildAuthHeaders("POST", path, body);
-
-      const response = await fetch(`${VOLC_VIDEO_BASE_URL}/`, {
+      const response = await fetch(VOLC_VIDEO_TASKS_URL, {
         method: "POST",
-        headers,
-        body,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${VOLC_API_KEY}`,
+        },
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
-      const data: VolcVideoTaskResponse = await response.json();
+      const data: CreateTaskResponse = await response.json();
 
-      if (data.code !== 10000 && data.code !== 0) {
+      // Check for API error
+      if (data.error) {
         throw new VolcVideoApiError(
-          data.message || `API error: ${data.code}`,
+          data.error.message || `API error: ${data.error.code}`,
           response.status,
-          data.code
+          data.error.code
         );
       }
 
-      if (!data.data?.task_id) {
+      if (!response.ok) {
+        throw new VolcVideoApiError(
+          `HTTP error: ${response.status}`,
+          response.status
+        );
+      }
+
+      if (!data.id) {
         throw new VolcVideoApiError("No task ID in response");
       }
 
       clearTimeout(timeoutId);
       return {
-        taskId: data.data.task_id,
-        status: (data.data.status as VideoTaskStatus) || "pending",
+        taskId: data.id,
+        status: (data.status as VideoTaskStatus) || "pending",
       };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Unknown error");
 
       // Don't retry on auth errors
-      if (error instanceof VolcVideoApiError && (error.errorCode === 401 || error.errorCode === 403)) {
+      if (error instanceof VolcVideoApiError && error.errorCode === "authentication_error") {
         throw error;
       }
 
@@ -262,16 +217,8 @@ export async function createVideoTask(
  */
 export async function getVideoTaskStatus(taskId: string): Promise<VideoStatusResult> {
   if (!isVolcVideoConfigured()) {
-    throw new VolcVideoApiError("Volcano Engine video generation is not configured");
+    throw new VolcVideoApiError("Volcano Engine video generation is not configured. Please set VOLC_API_KEY.");
   }
-
-  const requestBody = {
-    req_key: "i2v_high_aes_general", // Same model key for status query
-    task_id: taskId,
-  };
-
-  const body = JSON.stringify(requestBody);
-  const path = "/";
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -280,39 +227,62 @@ export async function getVideoTaskStatus(taskId: string): Promise<VideoStatusRes
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const headers = await buildAuthHeaders("POST", path, body);
-
-      const response = await fetch(`${VOLC_VIDEO_BASE_URL}/`, {
-        method: "POST",
-        headers,
-        body,
+      const response = await fetch(`${VOLC_VIDEO_TASKS_URL}/${taskId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${VOLC_API_KEY}`,
+        },
         signal: controller.signal,
       });
 
-      const data: VolcVideoTaskStatusResponse = await response.json();
+      const data: GetTaskResponse = await response.json();
 
-      if (data.code !== 10000 && data.code !== 0) {
+      // Check for API error
+      if (data.error) {
+        // Task failed
+        return {
+          taskId: data.id,
+          status: "failed",
+          errorMessage: data.error.message,
+        };
+      }
+
+      if (!response.ok) {
         throw new VolcVideoApiError(
-          data.message || `API error: ${data.code}`,
-          response.status,
-          data.code
+          `HTTP error: ${response.status}`,
+          response.status
         );
       }
 
       clearTimeout(timeoutId);
 
+      // Log raw status for debugging
+      console.log(`Video task ${taskId} raw status:`, data.status);
+
+      // Map status
+      let status: VideoTaskStatus = "pending";
+      if (data.status === "RUNNING" || data.status === "processing" || data.status === "running") {
+        status = "processing";
+      } else if (data.status === "SUCCESS" || data.status === "completed" || data.status === "succeeded") {
+        status = "completed";
+      } else if (data.status === "FAILED" || data.status === "failed") {
+        status = "failed";
+      }
+
+      // Get video URL - can be in content.video_url or output.url
+      const videoUrl = data.content?.video_url || data.output?.url;
+
       return {
-        taskId: data.data.task_id,
-        status: data.data.status,
-        progress: data.data.progress,
-        videoUrl: data.data.video_url,
-        errorMessage: data.data.error_message,
+        taskId: data.id,
+        status,
+        videoUrl,
       };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Unknown error");
 
       // Don't retry on auth errors
-      if (error instanceof VolcVideoApiError && (error.errorCode === 401 || error.errorCode === 403)) {
+      if (error instanceof VolcVideoApiError && error.errorCode === "authentication_error") {
         throw error;
       }
 
@@ -346,7 +316,7 @@ export async function waitForVideoTask(
   options: {
     pollIntervalMs?: number;
     maxWaitMs?: number;
-    onProgress?: (progress: number) => void;
+    onProgress?: (status: string) => void;
   } = {}
 ): Promise<VideoStatusResult> {
   const pollInterval = options.pollIntervalMs ?? 5000; // Default 5 seconds
@@ -356,8 +326,8 @@ export async function waitForVideoTask(
   while (Date.now() - startTime < maxWait) {
     const status = await getVideoTaskStatus(taskId);
 
-    if (status.progress !== undefined && options.onProgress) {
-      options.onProgress(status.progress);
+    if (options.onProgress) {
+      options.onProgress(status.status);
     }
 
     if (status.status === "completed") {
@@ -379,68 +349,17 @@ export async function waitForVideoTask(
 }
 
 /**
- * Generate a video from an image (convenience function that waits for completion)
- * @param imageUrl - URL of the source image
- * @param prompt - Description of the desired video motion
- * @param options - Generation and polling options
- * @returns Video URL
+ * Download video from URL and return as buffer
+ * @param videoUrl - URL of the video
+ * @returns Video buffer
  */
-export async function generateVideo(
-  imageUrl: string,
-  prompt?: string,
-  options: {
-    negativePrompt?: string;
-    duration?: number;
-    seed?: number;
-    pollIntervalMs?: number;
-    maxWaitMs?: number;
-    onProgress?: (progress: number) => void;
-  } = {}
-): Promise<string> {
-  const task = await createVideoTask(imageUrl, prompt, {
-    negativePrompt: options.negativePrompt,
-    duration: options.duration,
-    seed: options.seed,
-  });
+export async function downloadVideo(videoUrl: string): Promise<Buffer> {
+  const response = await fetch(videoUrl);
 
-  const result = await waitForVideoTask(task.taskId, {
-    pollIntervalMs: options.pollIntervalMs,
-    maxWaitMs: options.maxWaitMs,
-    onProgress: options.onProgress,
-  });
-
-  if (!result.videoUrl) {
-    throw new VolcVideoApiError("Video generation completed but no URL returned");
+  if (!response.ok) {
+    throw new VolcVideoApiError(`Failed to download video: ${response.status}`);
   }
 
-  return result.videoUrl;
-}
-
-/**
- * Regenerate a video with different parameters
- * @param imageUrl - URL of the source image
- * @param prompt - Description of the desired video motion
- * @param seed - Previous seed to modify (or omit for random)
- * @param options - Additional options
- * @returns Video URL
- */
-export async function regenerateVideo(
-  imageUrl: string,
-  prompt?: string,
-  seed?: number,
-  options?: {
-    negativePrompt?: string;
-    duration?: number;
-    pollIntervalMs?: number;
-    maxWaitMs?: number;
-    onProgress?: (progress: number) => void;
-  }
-): Promise<string> {
-  // Use a different seed for regeneration if not specified
-  const newSeed = seed ?? Math.floor(Math.random() * 2147483647);
-
-  return generateVideo(imageUrl, prompt, {
-    ...options,
-    seed: newSeed,
-  });
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
