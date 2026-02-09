@@ -97,16 +97,6 @@ fi
 INITIAL_TASKS=$(count_remaining_tasks)
 log "INFO" "Tasks remaining at start: $INITIAL_TASKS"
 
-# The prompt to send to Claude each time
-CLAUDE_PROMPT='Please follow the workflow in CLAUDE.md:
-1. Read task.json and select the next task with passes: false
-2. Implement the task following all steps
-3. Test thoroughly (run npm run lint and npm run build in hello-nextjs/)
-4. Update progress.txt with your work
-5. Commit all changes including task.json update in a single commit
-
-Start by reading task.json to find your task.'
-
 # Main loop
 for ((run=1; run<=TOTAL_RUNS; run++)); do
     echo ""
@@ -132,14 +122,27 @@ for ((run=1; run<=TOTAL_RUNS; run++)); do
     log "INFO" "Starting Claude Code session..."
     log "INFO" "Run log: $RUN_LOG"
 
-    # Run Claude with the prompt
+    # Create a temporary file with the prompt
+    PROMPT_FILE=$(mktemp)
+    cat > "$PROMPT_FILE" << 'PROMPT_EOF'
+Please follow the workflow in CLAUDE.md:
+1. Read task.json and select the next task with passes: false
+2. Implement the task following all steps
+3. Test thoroughly (run npm run lint and npm run build in hello-nextjs/)
+4. Update progress.txt with your work
+5. Commit all changes including task.json update in a single commit
+
+Start by reading task.json to find your task.
+PROMPT_EOF
+
+    # Run Claude with the prompt from stdin
     # Using -p for print mode (non-interactive)
     # Using --dangerously-skip-permissions to bypass all permission checks
     # Using --allowedTools to explicitly allow all tools
     if claude -p \
         --dangerously-skip-permissions \
         --allowed-tools "Bash Edit Read Write Glob Grep Task WebSearch WebFetch mcp__playwright__*" \
-        "$CLAUDE_PROMPT" 2>&1 | tee "$RUN_LOG"; then
+        < "$PROMPT_FILE" 2>&1 | tee "$RUN_LOG"; then
 
         RUN_END=$(date +%s)
         RUN_DURATION=$((RUN_END - RUN_START))
@@ -151,6 +154,9 @@ for ((run=1; run<=TOTAL_RUNS; run++)); do
 
         log "WARNING" "Run $run finished with exit code $? after ${RUN_DURATION} seconds"
     fi
+
+    # Clean up temp file
+    rm -f "$PROMPT_FILE"
 
     # Check remaining tasks after this run
     REMAINING_AFTER=$(count_remaining_tasks)

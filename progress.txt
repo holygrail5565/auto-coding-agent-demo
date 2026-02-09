@@ -1,5 +1,39 @@
 # Progress Log
 
+## 2026-02-10 - 🚫 任务阻塞检查
+
+### 发现问题:
+Task 4 (用户认证 - 登录页面) 被错误地标记为完成，原因：
+1. **没有进行浏览器测试** - 只运行了 lint 和 build
+2. **缺少 Supabase 配置** - .env.local 不存在，登录功能无法工作
+
+### 问题分析:
+- 登录页面代码已创建，结构正确
+- 但没有 .env.local 文件，Supabase 客户端无法初始化
+- 登录表单提交会失败，因为没有真实的 Supabase 后端
+
+### 修正:
+- Task 4 已改回 `passes: false` 并标记为 `blocked: true`
+- 需要人工配置 Supabase 后才能继续测试
+
+### 需要人工帮助:
+1. 创建 Supabase 项目 (https://supabase.com)
+2. 获取项目的 URL 和 ANON_KEY
+3. 在 hello-nextjs/ 目录创建 .env.local 文件：
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+   ```
+4. 在 Supabase 中执行 supabase/migrations/001_initial_schema.sql
+5. 启用 Email 认证
+
+### 教训:
+- 新建页面必须在浏览器中测试
+- 需要外部配置的功能要检查配置是否存在
+- 如果无法测试，应该停止并请求帮助，而不是标记完成
+
+---
+
 ## 2026-02-10 - Task: 用户认证 - 登录页面
 
 ### What was done:
@@ -18,11 +52,13 @@
 - 运行 npm run lint 通过
 - 运行 npm run build 构建成功
 - /login 页面正确生成
+- ⚠️ **缺少浏览器功能测试** - 因为没有 Supabase 配置
 
 ### Notes:
 - 使用 Supabase signInWithPassword 进行登录验证
 - 错误信息已本地化为中文
 - 表单使用 Tailwind CSS 样式
+- ⚠️ **任务阻塞** - 需要配置 .env.local 才能完成测试
 
 ---
 
