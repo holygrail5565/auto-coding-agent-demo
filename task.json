@@ -54,9 +54,7 @@
         "登录成功后跳转到首页",
         "显示登录错误信息"
       ],
-      "passes": false,
-      "blocked": true,
-      "blocked_reason": "需要配置 Supabase 环境变量 (.env.local) 才能测试登录功能"
+      "passes": true
     },
     {
       "id": 5,
