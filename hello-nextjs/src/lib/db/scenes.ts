@@ -239,6 +239,12 @@ export async function confirmAllDescriptions(
     throw new SceneError("Failed to confirm all descriptions", "database_error");
   }
 
+  // Update project stage to 'images' after all descriptions confirmed
+  await supabase
+    .from("projects")
+    .update({ stage: "images" })
+    .eq("id", projectId);
+
   return data?.length ?? 0;
 }
 
@@ -312,6 +318,12 @@ export async function confirmAllImages(projectId: string): Promise<number> {
     throw new SceneError("Failed to confirm all images", "database_error");
   }
 
+  // Update project stage to 'videos' after all images confirmed
+  await supabase
+    .from("projects")
+    .update({ stage: "videos" })
+    .eq("id", projectId);
+
   return data?.length ?? 0;
 }
 
@@ -384,6 +396,12 @@ export async function confirmAllVideos(projectId: string): Promise<number> {
     console.error("Error confirming all videos:", error);
     throw new SceneError("Failed to confirm all videos", "database_error");
   }
+
+  // Update project stage to 'completed' after all videos confirmed
+  await supabase
+    .from("projects")
+    .update({ stage: "completed" })
+    .eq("id", projectId);
 
   return data?.length ?? 0;
 }
