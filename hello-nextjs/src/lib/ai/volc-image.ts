@@ -1,17 +1,13 @@
 /**
  * Volcano Engine Image Generation API wrapper.
- * Handles image generation using Seedream model.
+ * Handles image generation using Doubao Seedream model.
+ * API: https://ark.cn-beijing.volces.com/api/v3/images/generations
  */
 
-import type {
-  VolcImageGenerationResponse,
-} from "@/types/ai";
-
 // Configuration
-const VOLC_ACCESS_KEY = process.env.VOLC_ACCESS_KEY;
-const VOLC_SECRET_KEY = process.env.VOLC_SECRET_KEY;
-const VOLC_IMAGE_BASE_URL = process.env.VOLC_IMAGE_BASE_URL || "https://visual.volcengineapi.com";
-const VOLC_REGION = process.env.VOLC_REGION || "cn-north-1";
+const VOLC_API_KEY = process.env.VOLC_API_KEY;
+const VOLC_IMAGE_BASE_URL = process.env.VOLC_IMAGE_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+const DEFAULT_MODEL = "doubao-seedream-4-5-251128";
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -25,7 +21,7 @@ export class VolcImageApiError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
-    public errorCode?: number
+    public errorCode?: string
   ) {
     super(message);
     this.name = "VolcImageApiError";
@@ -43,86 +39,7 @@ function sleep(ms: number): Promise<void> {
  * Check if the API credentials are configured
  */
 export function isVolcImageConfigured(): boolean {
-  return !!(VOLC_ACCESS_KEY && VOLC_SECRET_KEY);
-}
-
-/**
- * Generate HMAC-SHA256 signature for Volcano Engine API
- */
-async function generateSignature(
-  secretKey: string,
-  message: string
-): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secretKey);
-  const messageData = encoder.encode(message);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
-  return btoa(String.fromCharCode(...new Uint8Array(signature)));
-}
-
-/**
- * Build authorization header for Volcano Engine API
- */
-async function buildAuthHeaders(
-  method: string,
-  path: string,
-  body: string
-): Promise<Record<string, string>> {
-  if (!VOLC_ACCESS_KEY || !VOLC_SECRET_KEY) {
-    throw new VolcImageApiError("Volcano Engine credentials not configured");
-  }
-
-  const now = new Date();
-  const dateStr = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  const shortDate = dateStr.slice(0, 8);
-
-  // Build canonical request
-  const hashedPayload = await hashSHA256(body);
-  const canonicalHeaders = `content-type:application/json\nhost:visual.volcengineapi.com\nx-content-sha256:${hashedPayload}\nx-date:${dateStr}\n`;
-  const signedHeaders = "content-type;host;x-content-sha256;x-date";
-
-  const canonicalRequest = `${method}\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${hashedPayload}`;
-
-  // Build string to sign
-  const credentialScope = `${shortDate}/${VOLC_REGION}/cv/visual/request`;
-  const hashedCanonicalRequest = await hashSHA256(canonicalRequest);
-  const stringToSign = `HMAC-SHA256\n${dateStr}\n${credentialScope}\n${hashedCanonicalRequest}`;
-
-  // Calculate signature
-  const kDate = await generateSignature(VOLC_SECRET_KEY, shortDate);
-  const kRegion = await generateSignature(kDate, VOLC_REGION);
-  const kService = await generateSignature(kRegion, "cv");
-  const kSigning = await generateSignature(kService, "request");
-  const signature = await generateSignature(kSigning, stringToSign);
-
-  const authorization = `HMAC-SHA256 Credential=${VOLC_ACCESS_KEY}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-  return {
-    "Content-Type": "application/json",
-    "X-Date": dateStr,
-    "X-Content-Sha256": hashedPayload,
-    Authorization: authorization,
-  };
-}
-
-/**
- * Hash a string using SHA-256
- */
-async function hashSHA256(message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return !!VOLC_API_KEY;
 }
 
 /**
@@ -146,43 +63,48 @@ function buildStylePrompt(style?: string): string {
 }
 
 /**
+ * API response type
+ */
+interface ImageGenerationResponse {
+  created: number;
+  data: Array<{
+    url?: string;
+    b64_json?: string;
+  }>;
+  error?: {
+    message: string;
+    type: string;
+    code: string;
+  };
+}
+
+/**
  * Generate an image from a text description
  * @param prompt - The scene description to generate an image for
  * @param style - Optional visual style
  * @param options - Additional generation options
- * @returns Base64 encoded image data
+ * @returns Base64 encoded image data (without data URI prefix)
  */
 export async function generateImage(
   prompt: string,
   style?: string,
   options: {
-    width?: number;
-    height?: number;
-    negativePrompt?: string;
-    seed?: number;
+    size?: "1K" | "2K" | "720p" | "1080p";
   } = {}
 ): Promise<string> {
   if (!isVolcImageConfigured()) {
-    throw new VolcImageApiError("Volcano Engine image generation is not configured");
+    throw new VolcImageApiError("Volcano Engine image generation is not configured. Please set VOLC_API_KEY.");
   }
 
   const stylePrompt = buildStylePrompt(style);
   const fullPrompt = `${prompt}${stylePrompt}`;
 
   const requestBody = {
-    req_key: "high_aes_general_v21_L",
+    model: DEFAULT_MODEL,
     prompt: fullPrompt,
-    negative_prompt: options.negativePrompt ?? "low quality, blurry, distorted, ugly, bad anatomy",
-    width: options.width ?? 1024,
-    height: options.height ?? 1024,
-    use_sr: true,
-    sr_scale: 2.0,
-    return_url: false,
-    ...(options.seed !== undefined && { seed: options.seed }),
+    size: options.size ?? "2K",
+    watermark: false,
   };
-
-  const body = JSON.stringify(requestBody);
-  const path = "/";
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -191,36 +113,64 @@ export async function generateImage(
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const headers = await buildAuthHeaders("POST", path, body);
-
-      const response = await fetch(`${VOLC_IMAGE_BASE_URL}/`, {
+      const response = await fetch(VOLC_IMAGE_BASE_URL, {
         method: "POST",
-        headers,
-        body,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${VOLC_API_KEY}`,
+        },
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
-      const data: VolcImageGenerationResponse = await response.json();
+      const data: ImageGenerationResponse = await response.json();
 
-      if (data.code !== 10000 && data.code !== 0) {
+      // Check for API error
+      if (data.error) {
         throw new VolcImageApiError(
-          data.message || `API error: ${data.code}`,
+          data.error.message || `API error: ${data.error.code}`,
           response.status,
-          data.code
+          data.error.code
         );
       }
 
-      if (!data.data?.binary_data_base64?.[0]) {
+      if (!response.ok) {
+        throw new VolcImageApiError(
+          `HTTP error: ${response.status}`,
+          response.status
+        );
+      }
+
+      // Get image data - can be URL or base64
+      const imageData = data.data?.[0];
+      if (!imageData) {
         throw new VolcImageApiError("No image data in response");
       }
 
-      clearTimeout(timeoutId);
-      return data.data.binary_data_base64[0];
+      // If URL, download and convert to base64
+      if (imageData.url) {
+        const imageResponse = await fetch(imageData.url);
+        if (!imageResponse.ok) {
+          throw new VolcImageApiError("Failed to download generated image");
+        }
+        const arrayBuffer = await imageResponse.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        clearTimeout(timeoutId);
+        return base64;
+      }
+
+      // If base64, return directly
+      if (imageData.b64_json) {
+        clearTimeout(timeoutId);
+        return imageData.b64_json;
+      }
+
+      throw new VolcImageApiError("No image URL or base64 data in response");
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Unknown error");
 
       // Don't retry on auth errors
-      if (error instanceof VolcImageApiError && (error.errorCode === 401 || error.errorCode === 403)) {
+      if (error instanceof VolcImageApiError && error.errorCode === "authentication_error") {
         throw error;
       }
 
@@ -254,10 +204,7 @@ export async function generateImageBuffer(
   prompt: string,
   style?: string,
   options?: {
-    width?: number;
-    height?: number;
-    negativePrompt?: string;
-    seed?: number;
+    size?: "1K" | "2K";
   }
 ): Promise<Buffer> {
   const base64Data = await generateImage(prompt, style, options);
@@ -268,24 +215,15 @@ export async function generateImageBuffer(
  * Regenerate an image with different parameters
  * @param prompt - The scene description
  * @param style - Visual style
- * @param seed - Previous seed to modify (or omit for random)
  * @param options - Additional options
  */
 export async function regenerateImage(
   prompt: string,
   style?: string,
-  seed?: number,
   options?: {
-    width?: number;
-    height?: number;
-    negativePrompt?: string;
+    size?: "1K" | "2K";
   }
 ): Promise<string> {
-  // Use a different seed for regeneration if not specified
-  const newSeed = seed ?? Math.floor(Math.random() * 2147483647);
-
-  return generateImage(prompt, style, {
-    ...options,
-    seed: newSeed,
-  });
+  // The API generates different images each time by default
+  return generateImage(prompt, style, options);
 }

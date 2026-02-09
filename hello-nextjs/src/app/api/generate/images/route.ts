@@ -43,8 +43,7 @@ async function generateSceneImage(
 
     // Generate image using Volc API
     const imageBase64 = await generateImage(description, style, {
-      width: 1024,
-      height: 1024,
+      size: "2K",
     });
 
     // Delete old images from storage and database

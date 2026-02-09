@@ -28,9 +28,16 @@
 - 图片服务未配置时返回 503 错误
 - 分镜描述未确认返回 400 错误
 - 生成失败时自动更新状态为 'failed'
-- 图片使用 1024x1024 尺寸，PNG 格式
+- 图片使用 2K 尺寸，PNG 格式
 - 文件命名格式：scene-{order_index}-{timestamp}.png
 - Storage 路径格式：{userId}/{projectId}/{fileName}
+
+**修复 (2026-02-10)**:
+- 更正火山引擎 API 调用方式：使用 Bearer Token 认证而非 HMAC-SHA256 签名
+- 端点：https://ark.cn-beijing.volces.com/api/v3/images/generations
+- 模型：doubao-seedream-4-5-251128
+- 环境变量：VOLC_API_KEY
+- ✅ 测试通过：14秒生成图片，约950KB
 
 ---
 

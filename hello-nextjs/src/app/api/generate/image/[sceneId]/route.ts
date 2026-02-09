@@ -88,8 +88,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         scene.description,
         project.style ?? undefined,
         {
-          width: 1024,
-          height: 1024,
+          size: "2K",
         }
       );
 
