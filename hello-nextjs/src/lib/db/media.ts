@@ -483,6 +483,70 @@ export async function deleteVideosBySceneId(sceneId: string): Promise<number> {
 }
 
 // ============================================
+// Signed URL Operations (for private bucket)
+// ============================================
+
+/**
+ * Generate a signed URL for a file in storage
+ * @param storagePath - The storage path
+ * @param expiresIn - URL expiration time in seconds (default: 1 hour)
+ * @returns Signed URL
+ */
+export async function getSignedUrl(
+  storagePath: string,
+  expiresIn: number = 3600
+): Promise<string> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.storage
+    .from(MEDIA_BUCKET)
+    .createSignedUrl(storagePath, expiresIn);
+
+  if (error) {
+    console.error("Error creating signed URL:", error);
+    throw new MediaError("Failed to create signed URL", "storage_error");
+  }
+
+  return data.signedUrl;
+}
+
+/**
+ * Generate signed URLs for multiple files
+ * @param storagePaths - Array of storage paths
+ * @param expiresIn - URL expiration time in seconds (default: 1 hour)
+ * @returns Map of storage path to signed URL
+ */
+export async function getSignedUrls(
+  storagePaths: string[],
+  expiresIn: number = 3600
+): Promise<Map<string, string>> {
+  const supabase = await createClient();
+  const urlMap = new Map<string, string>();
+
+  // Process in batches to avoid rate limits
+  const batchSize = 10;
+  for (let i = 0; i < storagePaths.length; i += batchSize) {
+    const batch = storagePaths.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async (path) => {
+        const { data, error } = await supabase.storage
+          .from(MEDIA_BUCKET)
+          .createSignedUrl(path, expiresIn);
+        return { path, url: data?.signedUrl, error };
+      })
+    );
+
+    for (const result of results) {
+      if (result.url) {
+        urlMap.set(result.path, result.url);
+      }
+    }
+  }
+
+  return urlMap;
+}
+
+// ============================================
 // Storage Operations
 // ============================================
 
@@ -493,7 +557,7 @@ export async function deleteVideosBySceneId(sceneId: string): Promise<number> {
  * @param fileName - The file name
  * @param file - The file data (Buffer or Blob)
  * @param options - Upload options
- * @returns Storage path and public URL
+ * @returns Storage path and signed URL (valid for 1 hour)
  */
 export async function uploadFile(
   userId: string,
@@ -522,14 +586,12 @@ export async function uploadFile(
     throw new MediaError("Failed to upload file", "storage_error");
   }
 
-  // Get public URL
-  const { data: urlData } = supabase.storage
-    .from(MEDIA_BUCKET)
-    .getPublicUrl(storagePath);
+  // Generate signed URL (valid for 1 hour)
+  const signedUrl = await getSignedUrl(storagePath);
 
   return {
     path: storagePath,
-    url: urlData.publicUrl,
+    url: signedUrl,
   };
 }
 

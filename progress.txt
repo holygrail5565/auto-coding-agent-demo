@@ -1,5 +1,55 @@
 # Progress Log
 
+## 2026-02-10 - Bug Fix: Storage 签名 URL 修复
+
+### 问题描述:
+用户报告生成的图片在网页上显示失败，网络请求返回 400 错误。
+
+### 根本原因:
+- Supabase Storage bucket `project-media` 被设置为私有 (`public: false`)
+- 代码使用 `getPublicUrl()` 获取图片 URL，这只适用于公开 bucket
+- 私有 bucket 需要使用签名 URL (`createSignedUrl()`)
+
+### What was done:
+1. **lib/db/media.ts** - 添加签名 URL 函数:
+   - `getSignedUrl()` - 为单个文件生成签名 URL
+   - `getSignedUrls()` - 批量生成签名 URL
+   - 更新 `uploadFile()` 返回签名 URL 而非公开 URL
+
+2. **app/api/storage/signed-urls/route.ts** - 创建新 API 端点:
+   - POST /api/storage/signed-urls - 批量获取签名 URL
+   - 验证用户身份和路径所有权
+
+3. **hooks/useSignedUrls.ts** - 创建 React Hook:
+   - `useSignedUrls()` - 批量获取签名 URL
+   - `useSignedUrl()` - 获取单个签名 URL
+   - 自动刷新即将过期的 URL
+
+4. **更新组件使用签名 URL**:
+   - SceneImageCard.tsx - 添加 `signedUrl` prop
+   - SceneImageList.tsx - 使用 `useSignedUrls` hook
+   - SceneVideoCard.tsx - 添加 `signedImageUrl` 和 `signedVideoUrl` props
+   - SceneVideoList.tsx - 使用 `useSignedUrls` hook
+   - CompletedProjectView.tsx - 使用 `useSignedUrls` hook
+   - lib/db/projects-list.ts - 服务端获取签名 URL 用于项目预览图
+
+### Testing:
+- ✅ TypeScript 类型检查通过
+- ✅ npm run lint 通过
+- ✅ 浏览器测试通过（使用 MCP Playwright）:
+  - 项目列表页预览图正确显示
+  - 项目详情页分镜图片正确显示
+  - 签名 URL API 返回 200 OK
+  - 图片加载成功（签名 URL 格式：`/storage/v1/object/sign/...?token=...`）
+
+### Notes:
+- 签名 URL 默认有效期 1 小时
+- `useSignedUrls` hook 会在 URL 过期前自动刷新（80% 过期时间时）
+- 初始渲染时会短暂显示失败（使用数据库存储的旧 URL），但会立即被签名 URL 替换
+- 服务端渲染的组件（如项目列表）直接获取签名 URL，无需客户端 hook
+
+---
+
 ## 2026-02-10 - Task 31: 最终测试和优化
 
 ### What was done:

@@ -6,6 +6,7 @@ import type { Scene, Image as ImageType } from "@/types/database";
 
 interface SceneImageCardProps {
   scene: Scene & { images: ImageType[] };
+  signedUrl?: string; // Signed URL for the latest image
   onGenerate: (sceneId: string) => Promise<void>;
   onConfirm: (sceneId: string) => Promise<void>;
 }
@@ -26,6 +27,7 @@ const statusConfig = {
  */
 export function SceneImageCard({
   scene,
+  signedUrl,
   onGenerate,
   onConfirm,
 }: SceneImageCardProps) {
@@ -33,6 +35,7 @@ export function SceneImageCard({
   const [isConfirming, setIsConfirming] = useState(false);
 
   const latestImage = scene.images[0]; // Images are sorted by version desc
+  const imageUrl = signedUrl ?? latestImage?.url; // Use signed URL if available
   const status = statusConfig[scene.image_status];
   const canGenerate = scene.description_confirmed;
   const canConfirm = scene.image_status === "completed" && !scene.image_confirmed;
@@ -69,9 +72,9 @@ export function SceneImageCard({
     >
       {/* Image Preview */}
       <div className="relative aspect-video w-full bg-zinc-100 dark:bg-zinc-800">
-        {latestImage?.url ? (
+        {imageUrl ? (
           <Image
-            src={latestImage.url}
+            src={imageUrl}
             alt={`分镜 ${scene.order_index + 1}`}
             fill
             className="object-cover"

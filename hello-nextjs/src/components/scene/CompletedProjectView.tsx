@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
+import { useSignedUrls } from "@/hooks/useSignedUrls";
 import type { Scene, Image as ImageType, Video } from "@/types/database";
 
 type SceneWithMedia = Scene & { images: ImageType[]; videos: Video[] };
@@ -23,6 +24,29 @@ export function CompletedProjectView({
     scenes[0] ?? null
   );
 
+  // Collect all storage paths for images and videos
+  const storagePaths = useMemo(() => {
+    const paths: string[] = [];
+    scenes.forEach((scene) => {
+      if (scene.images[0]?.storage_path) {
+        paths.push(scene.images[0].storage_path);
+      }
+      if (scene.videos[0]?.storage_path) {
+        paths.push(scene.videos[0].storage_path);
+      }
+    });
+    return paths;
+  }, [scenes]);
+
+  // Fetch signed URLs for all media
+  const { urls: signedUrls } = useSignedUrls({ paths: storagePaths });
+
+  // Helper to get signed URL
+  const getSignedUrl = (storagePath: string | undefined): string | undefined => {
+    if (!storagePath) return undefined;
+    return signedUrls[storagePath];
+  };
+
   const completedDate = new Date(completedAt).toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",
@@ -32,8 +56,9 @@ export function CompletedProjectView({
   });
 
   const handleDownload = (video: Video, sceneIndex: number) => {
+    const downloadUrl = getSignedUrl(video.storage_path) ?? video.url;
     const link = document.createElement("a");
-    link.href = video.url;
+    link.href = downloadUrl;
     link.download = `scene-${sceneIndex + 1}.mp4`;
     document.body.appendChild(link);
     link.click();
@@ -107,7 +132,7 @@ export function CompletedProjectView({
           <div className="aspect-video w-full bg-black">
             <video
               key={selectedScene.videos[0].id}
-              src={selectedScene.videos[0].url}
+              src={getSignedUrl(selectedScene.videos[0].storage_path) ?? selectedScene.videos[0].url}
               className="h-full w-full"
               controls
               autoPlay
@@ -156,6 +181,8 @@ export function CompletedProjectView({
           const video = scene.videos[0];
           const image = scene.images[0];
           const isSelected = selectedScene?.id === scene.id;
+          const videoUrl = video ? (getSignedUrl(video.storage_path) ?? video.url) : undefined;
+          const imageUrl = image ? (getSignedUrl(image.storage_path) ?? image.url) : undefined;
 
           return (
             <button
@@ -167,15 +194,15 @@ export function CompletedProjectView({
                   : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
               }`}
             >
-              {video ? (
+              {videoUrl ? (
                 <video
-                  src={video.url}
+                  src={videoUrl}
                   className="h-full w-full object-cover"
                   muted
                 />
-              ) : image ? (
+              ) : imageUrl ? (
                 <Image
-                  src={image.url}
+                  src={imageUrl}
                   alt={`分镜 ${scene.order_index + 1}`}
                   fill
                   className="object-cover"

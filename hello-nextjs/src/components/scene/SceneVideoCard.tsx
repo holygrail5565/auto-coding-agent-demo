@@ -6,6 +6,8 @@ import type { Scene, Image as ImageType, Video } from "@/types/database";
 
 interface SceneVideoCardProps {
   scene: Scene & { images: ImageType[]; videos: Video[] };
+  signedImageUrl?: string; // Signed URL for the image
+  signedVideoUrl?: string; // Signed URL for the video
   onGenerate: (sceneId: string) => Promise<void>;
   onConfirm: (sceneId: string) => Promise<void>;
 }
@@ -26,6 +28,8 @@ const statusConfig = {
  */
 export function SceneVideoCard({
   scene,
+  signedImageUrl,
+  signedVideoUrl,
   onGenerate,
   onConfirm,
 }: SceneVideoCardProps) {
@@ -34,6 +38,8 @@ export function SceneVideoCard({
 
   const latestImage = scene.images[0];
   const latestVideo = scene.videos[0];
+  const imageUrl = signedImageUrl ?? latestImage?.url;
+  const videoUrl = signedVideoUrl ?? latestVideo?.url;
   const status = statusConfig[scene.video_status];
   const canConfirm = scene.video_status === "completed" && !scene.video_confirmed;
 
@@ -69,16 +75,16 @@ export function SceneVideoCard({
     >
       {/* Video/Image Preview */}
       <div className="relative aspect-video w-full bg-zinc-100 dark:bg-zinc-800">
-        {latestVideo?.url ? (
+        {videoUrl ? (
           <video
-            src={latestVideo.url}
+            src={videoUrl}
             className="h-full w-full object-cover"
             controls
             muted
           />
-        ) : latestImage?.url ? (
+        ) : imageUrl ? (
           <Image
-            src={latestImage.url}
+            src={imageUrl}
             alt={`分镜 ${scene.order_index + 1}`}
             fill
             className="object-cover"
@@ -141,7 +147,7 @@ export function SceneVideoCard({
         </div>
 
         {/* Play icon overlay for videos */}
-        {latestVideo?.url && !scene.video_confirmed && (
+        {videoUrl && !scene.video_confirmed && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50">
               <svg

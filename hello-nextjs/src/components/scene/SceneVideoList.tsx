@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { SceneVideoCard } from "./SceneVideoCard";
+import { useSignedUrls } from "@/hooks/useSignedUrls";
 import type { Scene, Image as ImageType, Video } from "@/types/database";
 
 type SceneWithMedia = Scene & { images: ImageType[]; videos: Video[] };
@@ -19,6 +20,23 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
   const [localScenes, setLocalScenes] = useState(scenes);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isConfirmingAll, setIsConfirmingAll] = useState(false);
+
+  // Collect all storage paths for images and videos
+  const storagePaths = useMemo(() => {
+    const paths: string[] = [];
+    localScenes.forEach((scene) => {
+      if (scene.images[0]?.storage_path) {
+        paths.push(scene.images[0].storage_path);
+      }
+      if (scene.videos[0]?.storage_path) {
+        paths.push(scene.videos[0].storage_path);
+      }
+    });
+    return paths;
+  }, [localScenes]);
+
+  // Fetch signed URLs for all media
+  const { urls: signedUrls } = useSignedUrls({ paths: storagePaths });
 
   const confirmedCount = localScenes.filter((s) => s.video_confirmed).length;
   const completedCount = localScenes.filter(
@@ -205,14 +223,27 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
 
       {/* Scene Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {localScenes.map((scene) => (
-          <SceneVideoCard
-            key={scene.id}
-            scene={scene}
-            onGenerate={handleGenerateVideo}
-            onConfirm={handleConfirmVideo}
-          />
-        ))}
+        {localScenes.map((scene) => {
+          const imageStoragePath = scene.images[0]?.storage_path;
+          const videoStoragePath = scene.videos[0]?.storage_path;
+          const signedImageUrl = imageStoragePath
+            ? signedUrls[imageStoragePath]
+            : undefined;
+          const signedVideoUrl = videoStoragePath
+            ? signedUrls[videoStoragePath]
+            : undefined;
+
+          return (
+            <SceneVideoCard
+              key={scene.id}
+              scene={scene}
+              signedImageUrl={signedImageUrl}
+              signedVideoUrl={signedVideoUrl}
+              onGenerate={handleGenerateVideo}
+              onConfirm={handleConfirmVideo}
+            />
+          );
+        })}
       </div>
 
       {/* Confirm All Button */}

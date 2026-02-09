@@ -6,12 +6,51 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Project } from "@/types/database";
 
+// Storage bucket name
+const MEDIA_BUCKET = "project-media";
+
 /**
  * Project with preview image for list display
  */
 export interface ProjectWithPreview extends Project {
   preview_image_url: string | null;
   scene_count: number;
+}
+
+/**
+ * Generate signed URLs for multiple storage paths
+ */
+async function getSignedUrls(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  paths: string[]
+): Promise<Map<string, string>> {
+  const urlMap = new Map<string, string>();
+
+  if (paths.length === 0) {
+    return urlMap;
+  }
+
+  // Process in batches to avoid rate limits
+  const batchSize = 10;
+  for (let i = 0; i < paths.length; i += batchSize) {
+    const batch = paths.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async (path) => {
+        const { data, error } = await supabase.storage
+          .from(MEDIA_BUCKET)
+          .createSignedUrl(path, 3600); // 1 hour expiry
+        return { path, url: data?.signedUrl, error };
+      })
+    );
+
+    for (const result of results) {
+      if (result.url) {
+        urlMap.set(result.path, result.url);
+      }
+    }
+  }
+
+  return urlMap;
 }
 
 /**
@@ -91,11 +130,11 @@ export async function getProjectsWithPreview(
     }
   });
 
-  // Get preview images for first scenes
+  // Get preview images for first scenes (including storage_path for signed URL)
   const firstSceneIds = Array.from(firstSceneMap.values());
   const { data: previewImages, error: imagesError } = await supabase
     .from("images")
-    .select("scene_id, url")
+    .select("scene_id, url, storage_path")
     .in("scene_id", firstSceneIds)
     .order("version", { ascending: false });
 
@@ -103,12 +142,27 @@ export async function getProjectsWithPreview(
     console.error("Error fetching preview images:", imagesError);
   }
 
-  // Map scene ID to preview image URL (get the latest version)
-  const previewImageMap = new Map<string, string>();
+  // Collect storage paths and generate signed URLs
+  const storagePaths: string[] = [];
+  const imageInfoMap = new Map<string, { url: string; storagePath: string }>();
   (previewImages ?? []).forEach((image) => {
-    if (!previewImageMap.has(image.scene_id)) {
-      previewImageMap.set(image.scene_id, image.url);
+    if (!imageInfoMap.has(image.scene_id) && image.storage_path) {
+      imageInfoMap.set(image.scene_id, {
+        url: image.url,
+        storagePath: image.storage_path,
+      });
+      storagePaths.push(image.storage_path);
     }
+  });
+
+  // Generate signed URLs
+  const signedUrlMap = await getSignedUrls(supabase, storagePaths);
+
+  // Map scene ID to preview image URL (prefer signed URL, fallback to stored URL)
+  const previewImageMap = new Map<string, string>();
+  imageInfoMap.forEach((info, sceneId) => {
+    const signedUrl = signedUrlMap.get(info.storagePath);
+    previewImageMap.set(sceneId, signedUrl ?? info.url);
   });
 
   // Combine all data

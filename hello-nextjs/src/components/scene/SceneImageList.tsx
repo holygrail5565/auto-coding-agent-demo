@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { SceneImageCard } from "./SceneImageCard";
+import { useSignedUrls } from "@/hooks/useSignedUrls";
 import type { Scene, Image as ImageType } from "@/types/database";
 
 type SceneWithImages = Scene & { images: ImageType[] };
@@ -19,6 +20,16 @@ export function SceneImageList({ projectId, scenes }: SceneImageListProps) {
   const [localScenes, setLocalScenes] = useState(scenes);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isConfirmingAll, setIsConfirmingAll] = useState(false);
+
+  // Collect all storage paths for images
+  const storagePaths = useMemo(() => {
+    return localScenes
+      .filter((s) => s.images.length > 0 && s.images[0].storage_path)
+      .map((s) => s.images[0].storage_path);
+  }, [localScenes]);
+
+  // Fetch signed URLs for all images
+  const { urls: signedUrls } = useSignedUrls({ paths: storagePaths });
 
   const confirmedCount = localScenes.filter((s) => s.image_confirmed).length;
   const completedCount = localScenes.filter(
@@ -205,14 +216,20 @@ export function SceneImageList({ projectId, scenes }: SceneImageListProps) {
 
       {/* Scene Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {localScenes.map((scene) => (
-          <SceneImageCard
-            key={scene.id}
-            scene={scene}
-            onGenerate={handleGenerateImage}
-            onConfirm={handleConfirmImage}
-          />
-        ))}
+        {localScenes.map((scene) => {
+          const storagePath = scene.images[0]?.storage_path;
+          const signedUrl = storagePath ? signedUrls[storagePath] : undefined;
+
+          return (
+            <SceneImageCard
+              key={scene.id}
+              scene={scene}
+              signedUrl={signedUrl}
+              onGenerate={handleGenerateImage}
+              onConfirm={handleConfirmImage}
+            />
+          );
+        })}
       </div>
 
       {/* Confirm All Button */}
